@@ -1,0 +1,5 @@
+name: MenuCustomizer
+type: module
+description: Specifically to provide menu links when the current active path has no children, to aid in navigation
+package: MITC
+core_version_requirement: ^9 || ^10
