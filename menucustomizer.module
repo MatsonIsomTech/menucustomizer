@@ -1,40 +1,5 @@
 <?php
 
-//use Drupal\menu_link_content\Entity\MenuLinkContent;
-//use Drupal\menu_link_content\Plugin\Menu\MenuLinkContent;
-
-use Drupal\Core\Menu\MenuTreeStorageInterface;
-use Drupal\Core\Menu\MenuTreeStorage;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-
-
-//$menuTreeStorage = new MenuTreeStorage();
-
-class MyMenuTree{
-
-public $treeStorage;
-
-public function __construct(){
-  $container = \Drupal::getContainer();
-
-  //$treeStorageService = \Drupal::service('menu.tree_storage');
-  $treeStorageService = $container->get('menu.tree_storage');
-
-}
-
-}
-
-//$myMenuTree = new MyMenuTree();
-
-
-
-
-/**
- * @file
- * Primary module hooks for MenuCustomizer module.
- */
-
-
 /**
  * Implements hook_menu_links_discovered_alter().
  */
@@ -43,60 +8,32 @@ function menucustomizer_menu_links_discovered_alter(&$links) {
 }
 */
 
-function menucustomizer_menu_local_tasks_alter(&$data, $route_name, \Drupal\Core\Cache\RefinableCacheableDependencyInterface &$cacheability) {
-  //die('! local tasks');
-  // Modify the main-menu items.
-
-}
-
-/**
- * Implements hook_preprocess().
- */
-function menucustomizer_preprocess(&$variables, $hook)
-{
-  //die('!! preprocess');  //this is working
-
-//  $active_menu_trail = menu_tree_active_path(); //ERROR, not in scope
-//  echo "<pre>";
-//  var_dump($active_menu_trail);
-//  echo "</pre>";
-//  die('!!');
-
-}
-
 function menucustomizer_preprocess_page(&$variables)
 {
+    $menu_name = 'main';
+    $parameters = new \Drupal\Core\Menu\MenuTreeParameters();
+    $parameters->onlyEnabledLinks();
+    $tree = \Drupal::menuTree()->load($menu_name, $parameters);
 
-  //$active_menu_trail = menu_tree_active_path(); //ERROR, not in scope
-  $activeTrailService = \Drupal::service('menu.active_trail');
-
-  $activeLink = $activeTrailService->getActiveLink();
-
-//  echo "activeLink = ";
-//  dump($activeLink);
-//  dump($activeLink->getPluginId());
-//  die();
-
-//$menuItemId = $activeLink->getPluginId();
-
-//  $menu_entity = MenuLinkContent::getEntity($activeLink->getPluginId());
-/*
-  $menu_entity = MenuLinkContent::load($activeLink->getPluginId());
-
-  echo "menu_entity = ";
-  dump($menu_entity);
-
-  echo "<br><br>";
-/*
-  $reflector = new ReflectionClass($activeTrailService);
-  dump($reflector->getMethods());
-
-  //dump($activeTrailService->getActiveTrail());
-*/
-
+    $newTree = modify_child_links($tree);
+    if ($newTree ?? false) {
+        $newMenu = \Drupal::menuTree()->build($newTree);
+        $variables['page']['sidebar_first']['glenn_theme_mainmenu_2'] = $newMenu;
+    }
 }
-function p($msg){
-  echo "<pre>";
-  var_dump($msg);
-  echo "</pre>";
+
+function modify_child_links(&$tree)
+{
+
+    $activeTrailService = \Drupal::service('menu.active_trail');
+
+    $activeLink = $activeTrailService->getActiveLink() ?? null;
+    if ($activeLink != null)
+        $menuLinkDefinition = $activeLink->getPluginDefinition();
+
+    if (!empty($menuLinkDefinition['parent'])) {
+        $parentLinkId = $menuLinkDefinition['parent'];
+        $parentLink = $tree[$parentLinkId] ?? null;
+        return $parentLink->subtree ?? null;
+    }
 }
