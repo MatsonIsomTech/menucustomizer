@@ -1,5 +1,6 @@
 <?php
 
+use Drupal\Core\Menu\DefaultMenuLinkTreeManipulators;
 /**
  * Implements hook_menu_links_discovered_alter().
  */
@@ -22,18 +23,62 @@ function menucustomizer_preprocess_page(&$variables)
     }
 }
 
+
 function modify_child_links(&$tree)
 {
-
     $activeTrailService = \Drupal::service('menu.active_trail');
 
     $activeLink = $activeTrailService->getActiveLink() ?? null;
-    if ($activeLink != null)
-        $menuLinkDefinition = $activeLink->getPluginDefinition();
 
-    if (!empty($menuLinkDefinition['parent'])) {
-        $parentLinkId = $menuLinkDefinition['parent'];
-        $parentLink = $tree[$parentLinkId] ?? null;
+
+    if (!$activeLink) {
+        return null;
+    }
+
+    $menuLinkDefinition = $activeLink->getPluginDefinition();
+
+    $parentLinkId = $menuLinkDefinition['parent'] ?? null;
+
+    if (!$parentLinkId) {
+        return null;
+    }
+
+    // Check top level of the tree for parent.
+    $parentLink = $tree[$parentLinkId] ?? false;
+
+    // If the parent is not in the top level then we have to dig into the tree and subtrees.
+    if (!$parentLink) {
+        $parentLink = findMenuLinkTreeElement($tree, $parentLinkId);
+    }
+
+    $currentLink = $parentLink->subtree[$menuLinkDefinition['id']];
+    if (isset($currentLink->subtree)) {
+        if (!empty($currentLink->subtree)) {
+            // Don't override current links subtree if it has one.
+            return $currentLink->subtree;
+        }
         return $parentLink->subtree ?? null;
     }
+    return null;
 }
+
+
+function findMenuLinkTreeElement(array $tree, $parentLinkId)
+{
+    // Step into the first element of the tree.
+    foreach ($tree as $element) {
+        if ($element->link->getPluginId() == $parentLinkId) {
+            return $element;
+        }
+        // If it has a subtree step into that.
+        if (!empty($element->subtree)) {
+            $foundElement = findMenuLinkTreeElement($element->subtree, $parentLinkId);
+            if ($foundElement) {
+                return $foundElement;
+            }
+        }
+    }
+
+    return null;
+}
+
