@@ -1,40 +1,6 @@
 <?php
 
-//use Drupal\menu_link_content\Entity\MenuLinkContent;
-//use Drupal\menu_link_content\Plugin\Menu\MenuLinkContent;
-
-use Drupal\Core\Menu\MenuTreeStorageInterface;
-use Drupal\Core\Menu\MenuTreeStorage;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-
-
-//$menuTreeStorage = new MenuTreeStorage();
-
-class MyMenuTree{
-
-public $treeStorage;
-
-public function __construct(){
-  $container = \Drupal::getContainer();
-
-  //$treeStorageService = \Drupal::service('menu.tree_storage');
-  $treeStorageService = $container->get('menu.tree_storage');
-
-}
-
-}
-
-//$myMenuTree = new MyMenuTree();
-
-
-
-
-/**
- * @file
- * Primary module hooks for MenuCustomizer module.
- */
-
-
+use Drupal\Core\Menu\DefaultMenuLinkTreeManipulators;
 /**
  * Implements hook_menu_links_discovered_alter().
  */
@@ -43,60 +9,87 @@ function menucustomizer_menu_links_discovered_alter(&$links) {
 }
 */
 
-function menucustomizer_menu_local_tasks_alter(&$data, $route_name, \Drupal\Core\Cache\RefinableCacheableDependencyInterface &$cacheability) {
-  //die('! local tasks');
-  // Modify the main-menu items.
-
-}
-
-/**
- * Implements hook_preprocess().
- */
-function menucustomizer_preprocess(&$variables, $hook)
-{
-  //die('!! preprocess');  //this is working
-
-//  $active_menu_trail = menu_tree_active_path(); //ERROR, not in scope
-//  echo "<pre>";
-//  var_dump($active_menu_trail);
-//  echo "</pre>";
-//  die('!!');
-
-}
-
 function menucustomizer_preprocess_page(&$variables)
 {
+    $current_path = \Drupal::service('path.current')->getPath();
 
-  //$active_menu_trail = menu_tree_active_path(); //ERROR, not in scope
-  $activeTrailService = \Drupal::service('menu.active_trail');
+    if (strpos($current_path, '/admin') === 0) {
+      return;
+    }
 
-  $activeLink = $activeTrailService->getActiveLink();
+    $menu_name = 'main';
+    $parameters = new \Drupal\Core\Menu\MenuTreeParameters();
+    $parameters->onlyEnabledLinks();
+    $tree = \Drupal::menuTree()->load($menu_name, $parameters);
 
-//  echo "activeLink = ";
-//  dump($activeLink);
-//  dump($activeLink->getPluginId());
-//  die();
-
-//$menuItemId = $activeLink->getPluginId();
-
-//  $menu_entity = MenuLinkContent::getEntity($activeLink->getPluginId());
-/*
-  $menu_entity = MenuLinkContent::load($activeLink->getPluginId());
-
-  echo "menu_entity = ";
-  dump($menu_entity);
-
-  echo "<br><br>";
-/*
-  $reflector = new ReflectionClass($activeTrailService);
-  dump($reflector->getMethods());
-
-  //dump($activeTrailService->getActiveTrail());
-*/
-
+    $newTree = modify_child_links($tree);
+    if ($newTree ?? false) {
+        $treeManipulator = \Drupal::service('menu.link_tree');
+        $manipulators = [
+            ['callable' => 'menu.default_tree_manipulators:checkNodeAccess'],
+            ['callable' => 'menu.default_tree_manipulators:checkAccess'],
+            ['callable' => 'menu.default_tree_manipulators:generateIndexAndSort'],
+          ];
+        $newTree = $treeManipulator->transform($newTree, $manipulators);
+        $newMenu = $treeManipulator->build($newTree);
+        $variables['page']['sidebar_first']['glenn_theme_mainmenu_2'] = $newMenu;
+    }
 }
-function p($msg){
-  echo "<pre>";
-  var_dump($msg);
-  echo "</pre>";
+
+function modify_child_links(&$tree)
+{
+    $activeTrailService = \Drupal::service('menu.active_trail');
+
+    $activeLink = $activeTrailService->getActiveLink() ?? null;
+
+
+    if (!$activeLink) {
+        return null;
+    }
+
+    $menuLinkDefinition = $activeLink->getPluginDefinition();
+
+    $parentLinkId = $menuLinkDefinition['parent'] ?? null;
+
+    if (!$parentLinkId) {
+        return null;
+    }
+
+    // Check top level of the tree for parent.
+    $parentLink = $tree[$parentLinkId] ?? false;
+
+    // If the parent is not in the top level then we have to dig into the tree and subtrees.
+    if (!$parentLink) {
+        $parentLink = findMenuLinkTreeElement($tree, $parentLinkId);
+    }
+
+    $currentLink = $parentLink->subtree[$menuLinkDefinition['id']];
+    if (isset($currentLink->subtree)) {
+        if (!empty($currentLink->subtree)) {
+            // Don't override current links subtree if it has one.
+            return $currentLink->subtree;
+        }
+        return $parentLink->subtree ?? null;
+    }
+    return null;
+}
+
+
+function findMenuLinkTreeElement(array $tree, $parentLinkId)
+{
+    // Step into the first element of the tree.
+    foreach ($tree as $element) {
+        if ($element->link->getPluginId() == $parentLinkId) {
+            return $element;
+        }
+        // If it has a subtree step into that.
+        if (!empty($element->subtree)) {
+            $foundElement = findMenuLinkTreeElement($element->subtree, $parentLinkId);
+            if ($foundElement) {
+                return $foundElement;
+            }
+        }
+    }
+
+    return null;
 }
