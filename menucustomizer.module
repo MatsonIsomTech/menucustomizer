@@ -24,11 +24,17 @@ function menucustomizer_preprocess_page(&$variables)
 
     $newTree = modify_child_links($tree);
     if ($newTree ?? false) {
-        $newMenu = \Drupal::menuTree()->build($newTree);
+        $treeManipulator = \Drupal::service('menu.link_tree');
+        $manipulators = [
+            ['callable' => 'menu.default_tree_manipulators:checkNodeAccess'],
+            ['callable' => 'menu.default_tree_manipulators:checkAccess'],
+            ['callable' => 'menu.default_tree_manipulators:generateIndexAndSort'],
+          ];
+        $newTree = $treeManipulator->transform($newTree, $manipulators);
+        $newMenu = $treeManipulator->build($newTree);
         $variables['page']['sidebar_first']['glenn_theme_mainmenu_2'] = $newMenu;
     }
 }
-
 
 function modify_child_links(&$tree)
 {
@@ -87,4 +93,3 @@ function findMenuLinkTreeElement(array $tree, $parentLinkId)
 
     return null;
 }
-
